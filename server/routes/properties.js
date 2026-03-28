@@ -297,7 +297,7 @@ router.get('/:propertyId/details', requireAuth, async (req, res) => {
 
     const property = await Property.findById(propertyId).populate({
       path: 'owner_id',
-      select: 'name mobile email',
+      select: 'name mobile email location',
     });
 
     if (!property) {

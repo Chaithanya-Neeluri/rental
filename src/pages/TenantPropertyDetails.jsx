@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import L from 'leaflet';
+import { MapContainer, Marker, Popup, Polyline, TileLayer } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import Navbar from '../components/common/Navbar.jsx';
 import Footer from '../components/common/Footer.jsx';
 import Container from '../components/common/Container.jsx';
@@ -8,6 +14,14 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { EnquiryApi, PropertyApi } from '../api/index.js';
 
 const ENQUIRY_SUGGESTIONS = ['Is it furnished?', 'What is the deposit amount?', 'Is food included?'];
+
+// Ensure marker assets load correctly in Vite builds.
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
 
 const TenantPropertyDetails = () => {
   const navigate = useNavigate();
@@ -53,6 +67,43 @@ const TenantPropertyDetails = () => {
 
   const owner = useMemo(() => property?.owner_id || null, [property]);
   const images = useMemo(() => property?.images || [], [property]);
+  const tenantCoords = useMemo(() => {
+    const latitude = Number(user?.location?.latitude);
+    const longitude = Number(user?.location?.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      return [latitude, longitude];
+    }
+    return null;
+  }, [user?.location?.latitude, user?.location?.longitude]);
+
+  const ownerCoords = useMemo(() => {
+    const latitude = Number(owner?.location?.latitude);
+    const longitude = Number(owner?.location?.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      return [latitude, longitude];
+    }
+    return null;
+  }, [owner?.location?.latitude, owner?.location?.longitude]);
+
+  const directionsUrl = useMemo(() => {
+    if (!ownerCoords) return null;
+    const destination = `${ownerCoords[0]},${ownerCoords[1]}`;
+    if (tenantCoords) {
+      const origin = `${tenantCoords[0]},${tenantCoords[1]}`;
+      return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+    }
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+  }, [ownerCoords, tenantCoords]);
+
+  const mapCenter = useMemo(() => {
+    if (tenantCoords && ownerCoords) {
+      return [
+        (tenantCoords[0] + ownerCoords[0]) / 2,
+        (tenantCoords[1] + ownerCoords[1]) / 2,
+      ];
+    }
+    return ownerCoords || tenantCoords;
+  }, [ownerCoords, tenantCoords]);
 
   const handleEnquire = async () => {
     if (!user?.id) return;
@@ -237,6 +288,77 @@ const TenantPropertyDetails = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4 shadow-soft sm:p-6">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-lg font-semibold text-slate-50">Tenant & Owner map view</h2>
+                <p className="text-xs sm:text-[11px] text-slate-400">
+                  Live location view using tenant coordinates from user profile and owner
+                  coordinates from owner account.
+                </p>
+              </div>
+
+              {mapCenter ? (
+                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800">
+                  <MapContainer
+                    center={mapCenter}
+                    zoom={13}
+                    scrollWheelZoom={false}
+                    className="h-64 w-full sm:h-80"
+                  >
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+
+                    {tenantCoords && (
+                      <Marker position={tenantCoords}>
+                        <Popup>
+                          Tenant location
+                          {user?.name ? `: ${user.name}` : ''}
+                        </Popup>
+                      </Marker>
+                    )}
+
+                    {ownerCoords && (
+                      <Marker position={ownerCoords}>
+                        <Popup>
+                          Owner location
+                          {property?.title ? `: ${property.title}` : ''}
+                        </Popup>
+                      </Marker>
+                    )}
+
+                    {tenantCoords && ownerCoords && (
+                      <Polyline positions={[tenantCoords, ownerCoords]} pathOptions={{ color: '#5da4ff' }} />
+                    )}
+                  </MapContainer>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 p-4">
+                  <p className="text-xs sm:text-[11px] text-slate-400">
+                    Map unavailable. Tenant or owner latitude and longitude is missing.
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2 text-xs sm:text-[11px] text-slate-400">
+                <span className="rounded-full bg-slate-800 px-3 py-1">
+                  Tenant:{' '}
+                  {tenantCoords ? `${tenantCoords[0].toFixed(5)}, ${tenantCoords[1].toFixed(5)}` : 'N/A'}
+                </span>
+                <span className="rounded-full bg-slate-800 px-3 py-1">
+                  Owner:{' '}
+                  {ownerCoords ? `${ownerCoords[0].toFixed(5)}, ${ownerCoords[1].toFixed(5)}` : 'N/A'}
+                </span>
+              </div>
+
+              <div className="mt-3">
+                <Button as="a" href={directionsUrl || '#'} target="_blank" rel="noreferrer" disabled={!directionsUrl}>
+                  Get Directions
+                </Button>
               </div>
             </div>
 
